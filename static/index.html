@@ -1,0 +1,1025 @@
+<title>Apex Scanner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap">
+
+<style>
+/* ─── Design tokens ───────────────────────────────────────────────────
+   Layout: sticky header + scrollable feed, fixed countdown dock
+   Color:  void-black surface, electric-teal accent, amber confidence
+   Type:   Syne (geometric, sharp) display + DM Mono data
+   ──────────────────────────────────────────────────────────────────── */
+:root {
+  --bg:        #060709;
+  --surface:   #0c0e13;
+  --card:      #10131a;
+  --border:    #1a1e2a;
+  --border2:   #222738;
+
+  --bull:      #00e5a0;
+  --bear:      #ff3d5a;
+  --gold:      #f5b731;
+  --blue:      #3d8bff;
+  --purple:    #a78bfa;
+  --cyan:      #22d3ee;
+
+  --text:      #e8ecf4;
+  --sub:       #8892b0;
+  --muted:     #464e68;
+
+  --font-head: "Syne", system-ui, sans-serif;
+  --font-mono: "DM Mono", "SF Mono", monospace;
+  --radius:    14px;
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:      #f0f2f7;
+    --surface: #f8f9fc;
+    --card:    #ffffff;
+    --border:  #e2e5ef;
+    --border2: #d0d5e8;
+    --text:    #111827;
+    --sub:     #4b5563;
+    --muted:   #9ca3af;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg:      #f0f2f7;
+  --surface: #f8f9fc;
+  --card:    #ffffff;
+  --border:  #e2e5ef;
+  --border2: #d0d5e8;
+  --text:    #111827;
+  --sub:     #4b5563;
+  --muted:   #9ca3af;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-head); -webkit-font-smoothing: antialiased; }
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  background: var(--bg);
+  z-index: 100;
+}
+
+/* ── Header ──────────────────────────────────────────────────────── */
+header {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 50;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  gap: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.brand-mark {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #3d8bff 0%, #00e5a0 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.brand-mark svg { width: 18px; height: 18px; }
+
+.brand-name {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -.4px;
+  line-height: 1;
+}
+
+.brand-name span {
+  background: linear-gradient(90deg, #3d8bff, #00e5a0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.brand-sub {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.upd-time {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.scan-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #3d8bff22, #00e5a022);
+  border: 1px solid #3d8bff55;
+  color: var(--blue);
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-head);
+  cursor: pointer;
+  letter-spacing: .3px;
+  transition: background .15s, border-color .15s;
+}
+.scan-btn:active { opacity: .75; transform: scale(.97); }
+.scan-btn.loading { border-color: #00e5a055; color: var(--bull); }
+.scan-icon { font-size: 13px; display: inline-block; }
+.scan-btn.loading .scan-icon { animation: spin .7s linear infinite; }
+
+/* ── Live ticker strip ───────────────────────────────────────────── */
+.ticker-strip {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  height: 30px;
+  display: flex;
+  align-items: center;
+}
+
+.ticker-track {
+  display: flex;
+  gap: 32px;
+  animation: marquee 25s linear infinite;
+  white-space: nowrap;
+  padding-left: 100%;
+}
+
+.ticker-item {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--sub);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.ticker-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ticker-dot.bull { background: var(--bull); }
+.ticker-dot.bear { background: var(--bear); }
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ── Stats tiles ─────────────────────────────────────────────────── */
+.stats-row {
+  display: flex;
+  gap: 8px;
+  padding-block: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.stats-row::-webkit-scrollbar { display: none; }
+
+.tile {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+  min-width: 72px;
+  position: relative;
+  overflow: hidden;
+}
+
+.tile::after {
+  content: "";
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  border-radius: 0 0 12px 12px;
+}
+
+.tile-bull::after { background: var(--bull); }
+.tile-bear::after { background: var(--bear); }
+.tile-gold::after { background: var(--gold); }
+.tile-blue::after { background: var(--blue); }
+
+.tile-val {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile-bull .tile-val { color: var(--bull); }
+.tile-bear .tile-val { color: var(--bear); }
+.tile-gold .tile-val { color: var(--gold); }
+.tile-blue .tile-val { color: var(--blue); }
+
+.tile-lbl {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* ── Filters ─────────────────────────────────────────────────────── */
+.filter-section {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-row {
+  display: flex;
+  gap: 6px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.filter-row::-webkit-scrollbar { display: none; }
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--sub);
+  border-radius: 20px;
+  padding: 5px 13px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-head);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all .15s;
+}
+.chip:active { opacity: .75; }
+.chip.active-dir {
+  background: rgba(61,139,255,.15);
+  border-color: rgba(61,139,255,.4);
+  color: var(--blue);
+}
+.chip.active-bull {
+  background: rgba(0,229,160,.1);
+  border-color: rgba(0,229,160,.35);
+  color: var(--bull);
+}
+.chip.active-bear {
+  background: rgba(255,61,90,.1);
+  border-color: rgba(255,61,90,.35);
+  color: var(--bear);
+}
+.chip.active-kz {
+  background: rgba(245,183,49,.1);
+  border-color: rgba(245,183,49,.35);
+  color: var(--gold);
+}
+
+.grade-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.grade-row::-webkit-scrollbar { display: none; }
+
+.grade-lbl {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.g-chip {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  border: 1px solid;
+  border-radius: 6px;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  opacity: .35;
+  transition: opacity .15s;
+}
+.g-chip.on { opacity: 1; }
+.g-chip[data-g="A"] { border-color: var(--bull); color: var(--bull); }
+.g-chip.on[data-g="A"] { background: rgba(0,229,160,.12); }
+.g-chip[data-g="B"] { border-color: var(--cyan); color: var(--cyan); }
+.g-chip.on[data-g="B"] { background: rgba(34,211,238,.1); }
+.g-chip[data-g="C"] { border-color: var(--gold); color: var(--gold); }
+.g-chip.on[data-g="C"] { background: rgba(245,183,49,.1); }
+.g-chip[data-g="D"] { border-color: var(--bear); color: var(--bear); }
+.g-chip.on[data-g="D"] { background: rgba(255,61,90,.1); }
+
+/* ── Signal cards ────────────────────────────────────────────────── */
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  padding-bottom: 110px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+}
+
+/* accent stripe on left edge */
+.card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+}
+.card.bull::before { background: linear-gradient(180deg, var(--bull), #00e5a060); }
+.card.bear::before { background: linear-gradient(180deg, var(--bear), #ff3d5a60); }
+
+/* ── Card header ── */
+.c-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 14px 0 18px;
+  gap: 10px;
+}
+
+.c-left { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+.c-sym {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.5px;
+  line-height: 1;
+}
+
+.c-badges {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: .5px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid;
+}
+
+.b-tf  { border-color: rgba(61,139,255,.3); color: var(--blue); background: rgba(61,139,255,.1); }
+.b-bull { border-color: rgba(0,229,160,.3); color: var(--bull); background: rgba(0,229,160,.08); }
+.b-bear { border-color: rgba(255,61,90,.3); color: var(--bear); background: rgba(255,61,90,.08); }
+
+/* ── Score ring ── */
+.score-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ring-svg { overflow: visible; }
+
+.ring-grade {
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.rg-A { background: rgba(0,229,160,.15);  color: var(--bull); }
+.rg-B { background: rgba(34,211,238,.12); color: var(--cyan); }
+.rg-C { background: rgba(245,183,49,.12); color: var(--gold); }
+.rg-D { background: rgba(255,61,90,.12);  color: var(--bear); }
+
+/* ── Strategy tags ── */
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 14px 8px 18px;
+}
+
+.stag {
+  font-size: 9px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px solid;
+}
+.stag-smc  { border-color: rgba(167,139,250,.4); color: var(--purple); background: rgba(167,139,250,.08); }
+.stag-ict  { border-color: rgba(61,139,255,.4);  color: var(--blue);   background: rgba(61,139,255,.08); }
+.stag-tech { border-color: rgba(34,211,238,.4);  color: var(--cyan);   background: rgba(34,211,238,.08); }
+.stag-pa   { border-color: rgba(245,183,49,.4);  color: var(--gold);   background: rgba(245,183,49,.08); }
+.stag-kz   { border-color: rgba(0,229,160,.4);   color: var(--bull);   background: rgba(0,229,160,.08); }
+
+/* ── Killzone banner ── */
+.kz-strip {
+  margin: 0 14px 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,229,160,.06);
+  border: 1px solid rgba(0,229,160,.2);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--bull);
+}
+.kz-pulse {
+  width: 6px; height: 6px;
+  background: var(--bull);
+  border-radius: 50%;
+  animation: kzpulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes kzpulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(.7)} }
+
+/* ── Confidence bar ── */
+.conf-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px 10px 18px;
+}
+.conf-track {
+  flex: 1;
+  height: 3px;
+  background: var(--border2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.conf-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .6s ease;
+}
+.conf-meta {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ── Price levels grid ── */
+.levels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--border);
+}
+.lvl {
+  padding: 11px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lvl:nth-child(odd)  { border-right: 1px solid var(--border); }
+.lvl:nth-child(1),
+.lvl:nth-child(2)    { border-bottom: 1px solid var(--border); }
+
+.lvl-lbl {
+  font-size: 8px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.lvl-val {
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.lv-entry { color: var(--text); }
+.lv-sl    { color: var(--bear); }
+.lv-tp1   { color: var(--bull); }
+.lv-tp2   { color: var(--cyan); }
+
+/* ── Card footer ── */
+.c-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 9px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.rr {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.c-time {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+/* ── Empty / loading states ── */
+.state-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.apex-loader {
+  position: relative;
+  width: 44px; height: 44px;
+}
+.apex-loader::before,
+.apex-loader::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+.apex-loader::before {
+  border-top-color: var(--blue);
+  animation: spin .9s linear infinite;
+}
+.apex-loader::after {
+  border-bottom-color: var(--bull);
+  animation: spin .9s linear infinite reverse;
+  inset: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.state-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sub);
+}
+.state-sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+/* ── Countdown dock ──────────────────────────────────────────────── */
+.dock {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: 10px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  background: rgba(6,7,9,.92);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 40;
+}
+
+.dock-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dock-lbl {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.progress-track {
+  flex: 1;
+  height: 2px;
+  background: var(--border2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--bull));
+  border-radius: 2px;
+  transition: width .5s linear;
+}
+
+.dock-num {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--sub);
+  white-space: nowrap;
+  min-width: 28px;
+  text-align: right;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 380px) {
+  .brand-name { font-size: 15px; }
+  .c-sym { font-size: 18px; }
+}
+</style>
+
+<!-- Header -->
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 18 18" fill="none">
+          <polygon points="9,2 16,14 2,14" fill="none" stroke="white" stroke-width="1.6" stroke-linejoin="round"/>
+          <line x1="9" y1="6" x2="9" y2="11" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="9" cy="13" r="1" fill="white"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name"><span>APEX</span> SCANNER</div>
+        <div class="brand-sub">Multi-Strategy · AI Scored</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="upd-time" id="updTime">—</div>
+      <button class="scan-btn" id="scanBtn" onclick="loadSignals()">
+        <span class="scan-icon" id="scanIcon">⟳</span> SCAN
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Ticker strip (decorative market status) -->
+<div class="ticker-strip">
+  <div class="ticker-track" id="tickerTrack">
+    <!-- filled by JS -->
+  </div>
+</div>
+
+<!-- Stats tiles -->
+<div class="stats-row">
+  <div class="tile tile-blue">
+    <div class="tile-val" id="tScanned">84</div>
+    <div class="tile-lbl">Combos</div>
+  </div>
+  <div class="tile">
+    <div class="tile-val" id="tTotal">—</div>
+    <div class="tile-lbl">Signals</div>
+  </div>
+  <div class="tile tile-bull">
+    <div class="tile-val" id="tBull">—</div>
+    <div class="tile-lbl">Bullish</div>
+  </div>
+  <div class="tile tile-bear">
+    <div class="tile-val" id="tBear">—</div>
+    <div class="tile-lbl">Bearish</div>
+  </div>
+  <div class="tile tile-gold">
+    <div class="tile-val" id="tAvg">—</div>
+    <div class="tile-lbl">Avg Score</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="filter-section">
+  <div class="filter-row" id="dirRow">
+    <button class="chip active-dir" data-f="All">All</button>
+    <button class="chip" data-f="Bullish">▲ Bullish</button>
+    <button class="chip" data-f="Bearish">▼ Bearish</button>
+    <button class="chip" data-f="Killzone">⚡ Killzone</button>
+    <button class="chip" data-f="D1">D1</button>
+    <button class="chip" data-f="H4">H4</button>
+    <button class="chip" data-f="H1">H1</button>
+    <button class="chip" data-f="M15">M15</button>
+  </div>
+  <div class="grade-row">
+    <span class="grade-lbl">GRADE:</span>
+    <button class="g-chip on" data-g="A">A 80+</button>
+    <button class="g-chip on" data-g="B">B 65+</button>
+    <button class="g-chip on" data-g="C">C 50+</button>
+    <button class="g-chip on" data-g="D">D 40+</button>
+  </div>
+</div>
+
+<!-- Feed -->
+<div class="feed" id="feed">
+  <div class="state-box">
+    <div class="apex-loader"></div>
+    <div class="state-title">Initialising Apex Scanner</div>
+    <div class="state-sub">Scanning 84 symbol–timeframe combos</div>
+  </div>
+</div>
+
+<!-- Dock -->
+<div class="dock">
+  <div class="dock-inner">
+    <span class="dock-lbl">Next Scan</span>
+    <div class="progress-track">
+      <div class="progress-fill" id="pgFill" style="width:100%"></div>
+    </div>
+    <span class="dock-num" id="pgNum">60s</span>
+  </div>
+</div>
+
+<script>
+const REFRESH = 60;
+const SMC_T   = ["BOS","CHoCH","FVG","OB"];
+const ICT_T   = ["ICT OTE","IPDA High","IPDA Low"];
+const TECH_T  = ["EMA Cross","EMA Stack","MACD Cross","RSI"];
+const PA_T    = ["Hammer","Shooting Star","Bull Engulf","Bear Engulf","Inside Bar","Doji","Morning Star","Evening Star"];
+
+const TICKERS = ["EUR/USD","GBP/USD","USD/JPY","AUD/USD","USD/CAD","NZD/USD",
+                 "GBP/JPY","EUR/JPY","USD/CHF","EUR/GBP","BTC/USD","US30"];
+
+let allSigs   = [];
+let dirFilter = "All";
+let grades    = new Set(["A","B","C","D"]);
+let cdLeft, cdInterval;
+
+// ── Ticker strip ────────────────────────────────────────────────────
+function buildTicker() {
+  const items = [...TICKERS, ...TICKERS].map(sym => {
+    const bull = Math.random() > .5;
+    const price = (1 + Math.random()).toFixed(5);
+    return `<span class="ticker-item">
+      <span class="ticker-dot ${bull?'bull':'bear'}"></span>
+      ${sym} <strong style="color:${bull?'var(--bull)':'var(--bear)'}">${bull?'▲':'▼'}</strong>
+    </span>`;
+  }).join("");
+  document.getElementById("tickerTrack").innerHTML = items;
+}
+buildTicker();
+
+// ── Score ring ──────────────────────────────────────────────────────
+function scoreColor(s) {
+  if (s >= 80) return "var(--bull)";
+  if (s >= 65) return "var(--cyan)";
+  if (s >= 50) return "var(--gold)";
+  return "var(--bear)";
+}
+
+function ringHTML(score, grade) {
+  const r    = 20, cx = 24, cy = 24;
+  const circ = 2 * Math.PI * r;
+  const dash = circ * (score / 100);
+  const col  = scoreColor(score);
+  return `<div class="score-wrap">
+    <svg class="ring-svg" width="48" height="48" viewBox="0 0 48 48">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--border2)" stroke-width="3.5"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${col}" stroke-width="3.5"
+        stroke-linecap="round"
+        stroke-dasharray="${dash.toFixed(2)} ${circ.toFixed(2)}"
+        transform="rotate(-90 ${cx} ${cy})"/>
+      <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central"
+        font-family="Syne, sans-serif" font-size="12" font-weight="800" fill="${col}">${score}</text>
+    </svg>
+    <div class="ring-grade rg-${grade}">${grade}</div>
+  </div>`;
+}
+
+// ── Tag classifier ──────────────────────────────────────────────────
+function tagCls(t) {
+  if (SMC_T.some(s  => t.includes(s)))  return "stag-smc";
+  if (ICT_T.some(s  => t.includes(s)))  return "stag-ict";
+  if (TECH_T.some(s => t.includes(s)))  return "stag-tech";
+  if (PA_T.some(s   => t.includes(s)))  return "stag-pa";
+  if (/KZ|London|York|Asian|Killzone/.test(t)) return "stag-kz";
+  return "stag-smc";
+}
+
+// ── Render ──────────────────────────────────────────────────────────
+function render() {
+  let sigs = allSigs;
+  if (dirFilter === "Bullish")  sigs = sigs.filter(s => s.direction === "Bullish");
+  if (dirFilter === "Bearish")  sigs = sigs.filter(s => s.direction === "Bearish");
+  if (dirFilter === "Killzone") sigs = sigs.filter(s => s.killzone);
+  if (["D1","H4","H1","M30","M15","M5"].includes(dirFilter)) sigs = sigs.filter(s => s.timeframe === dirFilter);
+  sigs = sigs.filter(s => grades.has(s.grade));
+
+  const feed = document.getElementById("feed");
+
+  if (!sigs.length) {
+    feed.innerHTML = `<div class="state-box">
+      <div style="font-size:36px">📡</div>
+      <div class="state-title">No signals found</div>
+      <div class="state-sub">Try adjusting filters or wait for next scan</div>
+    </div>`;
+    return;
+  }
+
+  feed.innerHTML = sigs.map(s => {
+    const isBull = s.direction === "Bullish";
+    const dirCls = isBull ? "bull" : "bear";
+    const bCls   = isBull ? "b-bull" : "b-bear";
+    const arrow  = isBull ? "▲" : "▼";
+    const col    = scoreColor(s.score);
+
+    const tags = (s.tags || []).map(t =>
+      `<span class="stag ${tagCls(t)}">${t}</span>`
+    ).join("");
+
+    const kz = s.killzone
+      ? `<div class="kz-strip"><span class="kz-pulse"></span>${s.killzone} Killzone</div>`
+      : "";
+
+    return `<div class="card ${dirCls}">
+      <div class="c-head">
+        <div class="c-left">
+          <div class="c-sym">${s.symbol}</div>
+          <div class="c-badges">
+            <span class="badge b-tf">${s.timeframe}</span>
+            <span class="badge ${bCls}">${arrow} ${s.direction}</span>
+          </div>
+        </div>
+        ${ringHTML(s.score, s.grade)}
+      </div>
+
+      <div class="conf-row">
+        <div class="conf-track">
+          <div class="conf-fill" style="width:${s.score}%;background:linear-gradient(90deg,${col}88,${col})"></div>
+        </div>
+        <span class="conf-meta">${s.confirmed}/4 strats</span>
+      </div>
+
+      ${kz}
+      ${tags ? `<div class="tags">${tags}</div>` : ""}
+
+      <div class="levels">
+        <div class="lvl">
+          <div class="lvl-lbl">Entry</div>
+          <div class="lvl-val lv-entry">${s.entry}</div>
+        </div>
+        <div class="lvl">
+          <div class="lvl-lbl">Stop Loss</div>
+          <div class="lvl-val lv-sl">${s.sl}</div>
+        </div>
+        <div class="lvl">
+          <div class="lvl-lbl">TP1 · 1:1</div>
+          <div class="lvl-val lv-tp1">${s.tp1}</div>
+        </div>
+        <div class="lvl">
+          <div class="lvl-lbl">TP2 · Liquidity</div>
+          <div class="lvl-val lv-tp2">${s.tp2}</div>
+        </div>
+      </div>
+
+      <div class="c-foot">
+        <div class="rr">⚖ R:R&nbsp;1:${s.rr}</div>
+        <div class="c-time">${s.time}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ── Fetch ────────────────────────────────────────────────────────────
+async function loadSignals() {
+  const btn  = document.getElementById("scanBtn");
+  const icon = document.getElementById("scanIcon");
+  btn.classList.add("loading");
+  document.getElementById("feed").innerHTML = `<div class="state-box">
+    <div class="apex-loader"></div>
+    <div class="state-title">Scanning Market</div>
+    <div class="state-sub">84 symbol × timeframe combos</div>
+  </div>`;
+  resetCountdown();
+
+  try {
+    const res  = await fetch("/api/signals");
+    const data = await res.json();
+    allSigs = data.signals || [];
+
+    document.getElementById("updTime").textContent  = data.updated || "—";
+    document.getElementById("tScanned").textContent = data.scanned || 84;
+    document.getElementById("tTotal").textContent   = data.count   || 0;
+    document.getElementById("tBull").textContent    = allSigs.filter(s => s.direction === "Bullish").length;
+    document.getElementById("tBear").textContent    = allSigs.filter(s => s.direction === "Bearish").length;
+
+    if (allSigs.length) {
+      const avg = Math.round(allSigs.reduce((a,s) => a+s.score,0)/allSigs.length);
+      document.getElementById("tAvg").textContent = avg + "%";
+    } else {
+      document.getElementById("tAvg").textContent = "—";
+    }
+
+    render();
+  } catch {
+    document.getElementById("feed").innerHTML = `<div class="state-box">
+      <div style="font-size:32px">⚠️</div>
+      <div class="state-title">Scanner Offline</div>
+      <div class="state-sub">Check that the server is running</div>
+    </div>`;
+  } finally {
+    btn.classList.remove("loading");
+  }
+}
+
+// ── Direction filter ─────────────────────────────────────────────────
+document.getElementById("dirRow").addEventListener("click", e => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  dirFilter = chip.dataset.f;
+  document.querySelectorAll(".chip").forEach(c =>
+    c.className = "chip" + (c.dataset.f === dirFilter
+      ? (dirFilter === "Bullish" ? " active-bull"
+        : dirFilter === "Bearish" ? " active-bear"
+        : dirFilter === "Killzone" ? " active-kz"
+        : " active-dir")
+      : "")
+  );
+  render();
+});
+
+// ── Grade filter ─────────────────────────────────────────────────────
+document.querySelectorAll(".g-chip").forEach(b => {
+  b.addEventListener("click", () => {
+    const g = b.dataset.g;
+    if (grades.has(g)) { if (grades.size > 1) { grades.delete(g); b.classList.remove("on"); } }
+    else { grades.add(g); b.classList.add("on"); }
+    render();
+  });
+});
+
+// ── Countdown ────────────────────────────────────────────────────────
+function resetCountdown() {
+  clearInterval(cdInterval);
+  cdLeft = REFRESH;
+  cdInterval = setInterval(() => {
+    cdLeft--;
+    const pct = (cdLeft / REFRESH) * 100;
+    document.getElementById("pgFill").style.width  = pct + "%";
+    document.getElementById("pgNum").textContent   = cdLeft + "s";
+    if (cdLeft <= 0) loadSignals();
+  }, 1000);
+}
+
+loadSignals();
+</script>
