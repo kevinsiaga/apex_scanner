@@ -20,7 +20,7 @@ SYMBOLS = {
     "USDCHF": "USDCHF=X", "USDCAD": "USDCAD=X", "AUDUSD": "AUDUSD=X",
     "NZDUSD": "NZDUSD=X", "EURJPY": "EURJPY=X", "GBPJPY": "GBPJPY=X",
     "EURGBP": "EURGBP=X", "AUDJPY": "AUDJPY=X", "EURAUD": "EURAUD=X",
-    "US30": "^DJI", "BTCUSD": "BTC-USD",
+    "US30": "^DJI", "BTCUSD": "BTC-USD", "XAUUSD": "GC=F",
 }
 
 TIMEFRAMES = {
@@ -58,6 +58,7 @@ def get_data(ticker, interval, period):
 def dp(symbol):
     if symbol == "BTCUSD": return 2
     if symbol == "US30":   return 1
+    if symbol == "XAUUSD": return 2
     if "JPY" in symbol:    return 3
     return 5
 
@@ -391,7 +392,7 @@ def build_signal(df, symbol, tf_name, direction, score, grade,
 # ══════════════════════════════════════════════════════════════════════
 # MAIN SCANNER
 # ══════════════════════════════════════════════════════════════════════
-def run_scanner(min_score=40):
+def run_scanner(min_score=30):
     signals = []
     for display, ticker in SYMBOLS.items():
         for tf_name, tf_cfg in TIMEFRAMES.items():
@@ -409,7 +410,7 @@ def run_scanner(min_score=40):
                 score, grade, confirmed, tags, in_kz = \
                     ai_score(smc, ict, tech, pa, direction)
 
-                if score >= min_score and confirmed >= 2:
+                if score >= min_score and confirmed >= 1:
                     sig = build_signal(df, display, tf_name, direction,
                                        score, grade, confirmed, tags, in_kz)
                     if sig:
@@ -427,7 +428,7 @@ def index():
 
 @app.route("/api/signals")
 def api_signals():
-    min_score = 40
+    min_score = 30
     signals   = run_scanner(min_score)
     now       = datetime.now(SAST).strftime("%H:%M:%S SAST")
     return jsonify({
